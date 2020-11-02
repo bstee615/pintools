@@ -34,6 +34,8 @@ using std::ofstream;
 // Global variables 
 /* ================================================================== */
 
+string lastLocation;
+
 
 /* ===================================================================== */
 // Command line switches
@@ -77,7 +79,14 @@ static void output(ADDRINT address, ostream* printTo, INS ins = INS_Invalid()) {
 
     // For output cleanliness, print only if source was found.
     if (!filename.empty()) {
-        *printTo << "0x" << address << " " << asmOrFuncName << " #" << filename << ":" << line << endl;
+        // *printTo << "0x" << address << " " << asmOrFuncName << " #" << filename << ":" << line << endl;
+        std::ostringstream ss;
+        ss << filename << ":" << line << endl;
+        auto location = ss.str();
+        if (location != lastLocation) {
+            *printTo << location;
+            lastLocation = location;
+        }
     }
 }
 
