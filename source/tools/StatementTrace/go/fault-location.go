@@ -9,6 +9,14 @@ import (
 	"github.com/llir/llvm/ir/metadata"
 )
 
+func typeToFormat(t string) string {
+	switch t {
+	case "int":
+		return "%d"
+	}
+	return "??" + t + "??"
+}
+
 func main() {
 	// Parse LLVM IR assembly file.
 	m, err := asm.ParseFile("../test.ll")
@@ -23,17 +31,32 @@ func main() {
 	}
 	f := faults(m, faultLocations)
 	for loc, vs := range f {
-		fmt.Printf("%v: [ ", loc)
-		for _, v := range vs {
-			fmt.Printf("%s ", v)
+		fmt.Printf("Paste into %s:%d: 'printf(\"assert(", loc.filename, loc.lineNumber)
+		for i, v := range vs {
+			if i == len(vs)-1 {
+				fmt.Printf("%s==%s);\",", v.name, typeToFormat(v.t))
+			} else {
+				fmt.Printf("%s==%s&&", v.name, typeToFormat(v.t))
+			}
 		}
-		fmt.Printf("]\n")
+		for i, v := range vs {
+			if i == len(vs)-1 {
+				fmt.Printf("%s);exit(0);'", v.name)
+			} else {
+				fmt.Printf("%s,", v.name)
+			}
+		}
 	}
 }
 
 type FaultLocation struct {
 	lineNumber int64
 	filename   string
+}
+
+type VariableInfo struct {
+	name string
+	t    string
 }
 
 // Filter vars to the variables visible by inst_scope
@@ -81,18 +104,21 @@ func ReflectStructField(Iface interface{}, FieldName string) (ir.Metadata, error
 	return Field.Interface().(ir.Metadata), nil
 }
 
-func faults(mod *ir.Module, faultLocations []FaultLocation) map[FaultLocation][]string {
-	ret := make(map[FaultLocation][]string, 0)
+func faults(mod *ir.Module, faultLocations []FaultLocation) map[FaultLocation][]VariableInfo {
+	ret := make(map[FaultLocation][]VariableInfo, 0)
 	for _, loc := range faultLocations {
 		if loc.filename == mod.SourceFilename {
-			ret[loc] = make([]string, 0)
+			ret[loc] = make([]VariableInfo, 0)
 		}
 	}
 	for _, global := range mod.Globals {
 		switch n := global.Metadata[0].Node.(type) {
 		case *metadata.DIGlobalVariableExpression:
 			for loc, _ := range ret {
-				ret[loc] = append(ret[loc], n.Var.Name)
+				ret[loc] = append(ret[loc], VariableInfo{
+					name: n.Var.Name,
+					t:    n.Var.Type.(*metadata.DIBasicType).Name,
+				})
 				// // case *metadata.DIGlobalVariable:
 				// 	vars = append(vars, n)
 			}
@@ -121,12 +147,15 @@ func faults(mod *ir.Module, faultLocations []FaultLocation) map[FaultLocation][]
 									for _, v := range in_scope {
 										add := true
 										for _, e := range ret[loc] {
-											if e == v.Name {
+											if e.name == v.Name {
 												add = false
 											}
 										}
 										if add {
-											ret[loc] = append(ret[loc], v.Name)
+											ret[loc] = append(ret[loc], VariableInfo{
+												name: v.Name,
+												t:    v.Type.(*metadata.DIBasicType).Name,
+											})
 										}
 									}
 								}
