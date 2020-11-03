@@ -35,72 +35,51 @@ type FaultLocation struct {
 	filename   string
 }
 
-func faults(mod *ir.Module, faultLocations []FaultLocation) map[FaultLocation][]*metadata.DILocalVariable {
-	fmt.Printf("SourceFilename %s\n", mod.SourceFilename)
-	locationsByFunction := make(map[*ir.Func][]FaultLocation, 0)
+func filter_to_scope(inst_scope metadata.Field, vars []metadata.DILocalVariable) []metadata.DILocalVariable {
+	in_scope := make([]metadata.DILocalVariable, 0)
+	for _, v := range vars {
+		p := inst_scope
+		at_root := false
+		for !at_root {
+			if p == v.Scope {
+				in_scope = append(in_scope, v)
+			}
 
-	for _, f := range mod.Funcs {
-		locationsByFunction[f] = make([]FaultLocation, 0)
-		var begin int64
-		if f.Metadata != nil {
-			begin = f.Metadata[0].Node.(*metadata.DISubprogram).Line
-		}
-		if len(f.Blocks) > 0 {
-			block := f.Blocks[len(f.Blocks)-1]
-			if t, ok := block.Term.(*ir.TermRet); ok {
-				var end int64 = t.Metadata[0].Node.(*metadata.DILocation).Line // TODO
-				fmt.Printf("%s\n", t)
-				for _, loc := range faultLocations {
-					if loc.filename == mod.SourceFilename && begin < loc.lineNumber && loc.lineNumber < end {
-						locationsByFunction[f] = append(locationsByFunction[f], loc)
-					}
-				}
+			switch pt := p.(type) {
+			case *metadata.DILocation:
+				p = pt.Scope
+			case *metadata.DILexicalBlock:
+				p = pt.Scope
+			case *metadata.DISubprogram:
+				p = pt.Scope
+			case *metadata.DIFile:
+				// Done
+				at_root = true
 			}
 		}
 	}
-	fmt.Printf("%v\n", locationsByFunction)
+	return in_scope
+}
 
-	ret := make(map[FaultLocation][]*metadata.DILocalVariable, 0)
+func faults(mod *ir.Module, faultLocations []FaultLocation) map[FaultLocation][]metadata.DILocalVariable {
+	ret := make(map[FaultLocation][]metadata.DILocalVariable, 0)
 	for _, f := range mod.Funcs {
-		vars := make([]*metadata.DILocalVariable, 0)
+		vars := make([]metadata.DILocalVariable, 0)
 		for _, block := range f.Blocks {
 			for _, inst := range block.Insts {
 				switch inst := inst.(type) {
 				case *ir.InstCall:
-					// LLVM calls a dbg function whenever a local variable or parameter is declared
+					// LLVM calls a dbg function whenever a local variable or parameter is declared.
 					if inst.Callee.(*ir.Func).GlobalIdent.GlobalName == "llvm.dbg.declare" {
 						a := inst.Args[1].(*metadata.Value).Value.(*metadata.DILocalVariable)
-						vars = append(vars, a)
+						vars = append(vars, *a)
 					}
 				case *ir.InstAdd:
-					for _, loc := range locationsByFunction[f] {
+					for _, loc := range faultLocations {
 						inst_loc, ok := inst.Metadata[0].Node.(*metadata.DILocation)
 						if ok && inst_loc.Line == loc.lineNumber {
-							// This is the line of our fault location. Get all variables in scope
-							in_scope := make([]*metadata.DILocalVariable, 0)
-							inst_scope := inst_loc.Scope
-							for _, v := range vars {
-								p := inst_scope
-								at_root := false
-								for !at_root {
-									if p == v.Scope {
-										in_scope = append(in_scope, v)
-									}
-
-									switch pt := p.(type) {
-									case *metadata.DILocation:
-										p = pt.Scope
-									case *metadata.DILexicalBlock:
-										p = pt.Scope
-									case *metadata.DISubprogram:
-										p = pt.Scope
-									case *metadata.DIFile:
-										// Done
-										at_root = true
-									}
-								}
-							}
-							ret[loc] = in_scope
+							// This is the line of our fault location. Get all variables in scope.
+							ret[loc] = filter_to_scope(inst_loc.Scope, vars)
 						}
 					}
 				}
