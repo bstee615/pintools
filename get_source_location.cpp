@@ -9,7 +9,13 @@
  * warranties, other than those that are expressly stated in the License.
  */
 
-/*
+/**
+ * This tool prints out each statement in a trace of the program.
+ * Taken from the Pintool example code, get_source_location.cpp.
+ * The old description is included below.
+ * 
+ * ======================================================================================================
+ * 
  * This tool demonstrates the usage of the PIN_GetSourceLocation API from an instrumentation routine. You
  * may notice that there are no analysis routines in this example.
  *
@@ -77,12 +83,13 @@ static void output(ADDRINT address, ostream* printTo, INS ins = INS_Invalid()) {
         asmOrFuncName = RTN_FindNameByAddress(address); // For a routine, get its name.
     }
 
-    // For output cleanliness, print only if source was found.
+    // Print lines only if source was found.
     if (!filename.empty()) {
-        // *printTo << "0x" << address << " " << asmOrFuncName << " #" << filename << ":" << line << endl;
         std::ostringstream ss;
         ss << filename << ":" << line << endl;
         auto location = ss.str();
+
+        // Don't print duplicate lines.
         if (location != lastLocation) {
             *printTo << location;
             lastLocation = location;
