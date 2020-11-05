@@ -11,7 +11,7 @@
 
 /**
  * This tool prints out each statement in a trace of the program.
- * Taken from the Pintool example code, get_source_location.cpp.
+ * Taken from the Pintool example code, pin-3.16/source/tools/SimpleExamples/get_source_location.cpp.
  * The old description is included below.
  * 
  * ======================================================================================================
