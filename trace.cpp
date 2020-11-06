@@ -63,8 +63,8 @@ INT32 Usage() {
     return -1;
 }
 
-// This is a utility function for acquiring and printing the source information.
-static void output(ADDRINT address, ostream* printTo, INS ins = INS_Invalid()) {
+// Printing the source location of an instruction.
+static void OutputSourceLocation(ADDRINT address, ostream* printTo, INS ins = INS_Invalid()) {
     string filename;    // This will hold the source file name.
     INT32 line = 0;     // This will hold the line number within the file.
 
@@ -82,6 +82,7 @@ static void output(ADDRINT address, ostream* printTo, INS ins = INS_Invalid()) {
     else {
         asmOrFuncName = RTN_FindNameByAddress(address); // For a routine, get its name.
     }
+    // *printTo << asmOrFuncName << endl;
 
     // Print lines only if source was found.
     if (!filename.empty()) {
@@ -97,34 +98,10 @@ static void output(ADDRINT address, ostream* printTo, INS ins = INS_Invalid()) {
     }
 }
 
-
-/* ===================================================================== */
-// Instrumentation callbacks
-/* ===================================================================== */
-
-// IMG instrumentation routine - called once per image upon image load
-static VOID ImageLoad(IMG img, VOID * v) {
-    // For simplicity, instrument only the main image. This can be extended to any other image of course.
-    if (IMG_IsMainExecutable(img)) {
-
-        // To find all the instructions in the image, we traverse the sections of the image.
-        for (SEC sec = IMG_SecHead(img); SEC_Valid(sec); sec = SEC_Next(sec)) {
-
-            // For each section, process all RTNs.
-            for (RTN rtn = SEC_RtnHead(sec); RTN_Valid(rtn); rtn = RTN_Next(rtn)) {
-
-                // Many RTN APIs require that the RTN be opened first.
-                RTN_Open(rtn);
-                output(RTN_Address(rtn), static_cast<ostream*>(v)); // Calls PIN_GetSourceLocation for the RTN address.
-
-                // Call PIN_GetSourceLocation for all the instructions of the RTN.
-                for (INS ins = RTN_InsHead(rtn); INS_Valid(ins); ins = INS_Next(ins)) {
-                    output(INS_Address(ins), static_cast<ostream*>(v), ins); // Calls PIN_GetSourceLocation for a single instruction.
-                }
-                RTN_Close(rtn); // Don't forget to close the RTN once you're done.
-            }
-        }
-    }
+// Called on every instruction in a trace.
+VOID OnInstruction(INS ins, VOID *v)
+{
+    OutputSourceLocation(INS_Address(ins), static_cast<ostream*>(v), ins); // Calls PIN_GetSourceLocation for a single instruction.
 }
 
 // Adding fini function just to close the output file
@@ -153,7 +130,7 @@ int main(INT32 argc, CHAR **argv) {
 		outFile.open(KnobOutputFile.Value().c_str());
     }
 
-    IMG_AddInstrumentFunction(ImageLoad, (KnobOutputFile.Value().empty()) ? &cout : &outFile);
+    INS_AddInstrumentFunction(OnInstruction, (KnobOutputFile.Value().empty()) ? &cout : &outFile);
 
     // Register function to be called when the application exits
     PIN_AddFiniFunction(Fini, &outFile);
