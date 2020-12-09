@@ -17,6 +17,8 @@ gcc -g -O0 test.c -o test           # Build the example program with debug flags
     -- ./test                       # ...on the example program.
 ```
 
+Make sure to compile the target program with debug flag `-g`.
+
 Example output:
 ```
 [me@centos8 Trace]$ ../../../pin -t obj-intel64/trace.so -- ./a.out
