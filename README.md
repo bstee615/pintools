@@ -9,12 +9,10 @@ Clone this project into `<pin-3.16-root>/source/tools/` (next to the other examp
 # Usage
 
 ```
-cd <pin-3.16-root>/source/tools/    # Navigate to the project root
+cd <pin-3.16-root>/source/tools/trace-pintool    # Navigate to the project root
 make                                # Build the Pintool
 gcc -g -O0 test.c -o test           # Build the example program with debug flags and no optimizations
-../../../pin \                      # Run Pin...
-    -t obj-intel64/trace.so \       # ...with our tool...
-    -- ./test                       # ...on the example program.
+../../../pin -t obj-intel64/trace.so -- ./test
 ```
 
 Make sure to compile the target program with debug flag `-g`.
