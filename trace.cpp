@@ -41,6 +41,7 @@ using std::ofstream;
 /* ================================================================== */
 
 string lastLocation;
+ofstream outFile;
 
 
 /* ===================================================================== */
@@ -63,8 +64,20 @@ INT32 Usage() {
     return -1;
 }
 
+void write(std::string &str)
+{
+    if (!KnobOutputFile.Value().empty())
+    {
+		outFile << str;
+    }
+    else
+    {
+		cout << str;
+    }
+}
+
 // Printing the source location of an instruction.
-static void OutputSourceLocation(ADDRINT address, ostream* printTo, INS ins = INS_Invalid()) {
+static void OutputSourceLocation(ADDRINT address, INS ins = INS_Invalid()) {
     string filename;    // This will hold the source file name.
     INT32 line = 0;     // This will hold the line number within the file.
 
@@ -82,7 +95,6 @@ static void OutputSourceLocation(ADDRINT address, ostream* printTo, INS ins = IN
     else {
         asmOrFuncName = RTN_FindNameByAddress(address); // For a routine, get its name.
     }
-    // *printTo << asmOrFuncName << endl;
 
     // Print lines only if source was found.
     if (!filename.empty()) {
@@ -92,7 +104,7 @@ static void OutputSourceLocation(ADDRINT address, ostream* printTo, INS ins = IN
 
         // Don't print duplicate lines.
         if (location != lastLocation) {
-            *printTo << location;
+            write(location);
             lastLocation = location;
         }
     }
@@ -101,15 +113,15 @@ static void OutputSourceLocation(ADDRINT address, ostream* printTo, INS ins = IN
 // Called on every instruction in a trace.
 VOID OnInstruction(INS ins, VOID *v)
 {
-    OutputSourceLocation(INS_Address(ins), static_cast<ostream*>(v), ins); // Calls PIN_GetSourceLocation for a single instruction.
+    OutputSourceLocation(INS_Address(ins), ins); // Calls PIN_GetSourceLocation for a single instruction.
 }
 
 // Adding fini function just to close the output file
 VOID Fini(INT32 code, VOID *v)
 {
-    if (!KnobOutputFile.Value().empty() && v != NULL)
+    if (!KnobOutputFile.Value().empty())
     {
-		static_cast<ofstream*>(v)->close();
+        outFile.close();
     }
 }
 
@@ -124,16 +136,21 @@ int main(INT32 argc, CHAR **argv) {
         return Usage();
     }
 
-    ofstream outFile;
     if (!KnobOutputFile.Value().empty())
     {
-		outFile.open(KnobOutputFile.Value().c_str());
+		outFile.open(KnobOutputFile.Value().c_str(), std::ofstream::out);
+        if(!outFile)
+        {
+            cerr << "File could not be opened: \"" << KnobOutputFile.Value() << "\"" << endl;
+            return -1;
+        } 
     }
 
-    INS_AddInstrumentFunction(OnInstruction, (KnobOutputFile.Value().empty()) ? &cout : &outFile);
+    // Called on each instruction in the trace
+    INS_AddInstrumentFunction(OnInstruction, 0);
 
     // Register function to be called when the application exits
-    PIN_AddFiniFunction(Fini, &outFile);
+    PIN_AddFiniFunction(Fini, 0);
 
     // Never returns
     PIN_StartProgram();
