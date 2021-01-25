@@ -54,8 +54,14 @@ CXChildVisitResult visitor(CXCursor cursor, CXCursor /* parent */, CXClientData 
     auto params = WalkParams::get(clientData);
     CXCursorKind cursorKind = clang_getCursorKind(cursor);
 
+    // If this is the level we want, tag it
+    bool tagged = false;
+    if (cursorKind == params->seeking) {
+        tagged = true;
+    }
+
     // Log level
-    // std::cout << std::string(params->level, '-') << " " << getCursorKindName(cursorKind) << " (" << getCursorSpelling(cursor) << ")\n";
+    std::cout << std::string(params->level, '-') << " " << getCursorKindName(cursorKind) << " (" << getCursorSpelling(cursor) << ")" << (tagged ? " *" : "") << "\n";
 
     // Create next call's params and recurse
     unsigned int nextLevel = params->level + 1;
