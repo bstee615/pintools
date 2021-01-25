@@ -1,21 +1,36 @@
 #include <clang-c/Index.h>
 #include <iostream>
 #include <string>
+#include <vector>
 
 // https://bastian.rieck.ru/blog/posts/2015/baby_steps_libclang_ast/
+struct Location
+{
+    std::string filename;
+    unsigned int lineno;
+
+    Location(CXCursor cursor)
+    {
+        CXSourceLocation cxLocation = clang_getCursorLocation(cursor);
+        CXFile file;
+        unsigned int column, offset;
+        clang_getExpansionLocation(cxLocation, &file, &lineno, &column, &offset);
+        filename = std::string(clang_getCString(clang_getFileName(file)));
+    }
+};
 
 /// The information we need at one level of the traversal.
 struct WalkParams
 {
 private:
-
     // Get params from CXClientData during the traversal.
-    WalkParams(CXCursorKind seeking) : level(0), seeking(seeking) {}
+    WalkParams(CXCursorKind seeking, std::vector<Location> *tags) : level(0), seeking(seeking), tags(tags) {}
 
 public:
     unsigned int level;
     CXCursorKind seeking;
     CXCursor cursor;
+    std::vector<Location> *tags;
 
     // Copy params from CXCursor and CXClientData during the traversal.
     WalkParams(CXCursor cursor, CXClientData data) : WalkParams(*reinterpret_cast<WalkParams *>(data))
@@ -25,11 +40,12 @@ public:
 
     WalkParams(const WalkParams &currentParams) : level(currentParams.level),
                                                   seeking(currentParams.seeking),
-                                                  cursor(currentParams.cursor) {}
+                                                  cursor(currentParams.cursor),
+                                                  tags(currentParams.tags) {}
 
-    static WalkParams initial(CXCursorKind seeking)
+    static WalkParams initial(CXCursorKind seeking, std::vector<Location> *tags)
     {
-        return WalkParams(seeking);
+        return WalkParams(seeking, tags);
     }
 
     static WalkParams next(const WalkParams &currentParams)
@@ -43,9 +59,12 @@ public:
     // TODO: Filter to source files we have traced with Pin.
     bool isValidLocation()
     {
+        if (cursorKind() == CXCursor_TranslationUnit)
+        {
+            return true;
+        }
         CXSourceLocation location = clang_getCursorLocation(cursor);
-        if (clang_Location_isFromMainFile(location) == 0)
-            return CXChildVisit_Continue;
+        return (bool)clang_Location_isFromMainFile(location);
     }
 
     // Getter for the current CXCursorKind.
@@ -79,18 +98,35 @@ public:
         clang_disposeString(cursorSpelling);
         return result;
     }
+
+    void tag()
+    {
+        tags->push_back(Location(cursor));
+    }
+
+    void log()
+    {
+        std::cout << std::string(level, '-') << " ";
+        std::cout << getCursorKindName() << " (" << getCursorSpelling() << ") ";
+        std::cout << (cursorMatches() ? "* " : "");
+        std::cout << "\n";
+    }
 };
 
 CXChildVisitResult visitor(CXCursor cursor, CXCursor /* parent */, CXClientData clientData)
 {
     WalkParams currentParams(cursor, clientData);
-
-    // Get data into workable form
-    CXCursorKind cursorKind = clang_getCursorKind(cursor);
+    if (!currentParams.isValidLocation())
+    {
+        return CXChildVisit_Continue;
+    }
 
     // If this is the level we want, tag it and log
-    bool tagged = currentParams.cursorMatches();
-    std::cout << std::string(currentParams.level, '-') << " " << currentParams.getCursorKindName() << " (" << currentParams.getCursorSpelling() << ")" << (tagged ? " *" : "") << "\n";
+    if (currentParams.cursorMatches())
+    {
+        currentParams.tag();
+    }
+    currentParams.log();
 
     // Create next call's params and recurse
     WalkParams nextParams = WalkParams::next(currentParams);
@@ -121,9 +157,14 @@ int main(int argc, char **argv)
     }
 
     CXCursor rootCursor = clang_getTranslationUnitCursor(tu);
+    std::vector<Location> tags;
+    WalkParams params = WalkParams::initial(CXCursor_VarDecl, &tags);
+    visitor(rootCursor, CXCursor(), (CXClientData)&params);
 
-    WalkParams params = WalkParams::initial(CXCursor_VarDecl);
-    clang_visitChildren(rootCursor, visitor, &params);
+    for (auto l : tags)
+    {
+        std::cout << l.filename << " " << l.lineno << std::endl;
+    }
 
     clang_disposeTranslationUnit(tu);
     clang_disposeIndex(index);
