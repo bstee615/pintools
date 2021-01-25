@@ -71,11 +71,3 @@ SANITY_SUBSET := $(TEST_TOOL_ROOTS) $(TEST_ROOTS)
 
 # This section contains the build rules for all binaries that have special build rules.
 # See makefile.default.rules for the default build rules.
-
-test: test.c
-	clang test.c -g -O0 -otest
-
-parse.o: parse.cpp
-	clang parse.cpp -c -g
-parse: parse.o
-	clang parse.o -g -lclang -oparse
