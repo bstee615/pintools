@@ -4,7 +4,8 @@ Trace is a [Pintool](https://software.intel.com/content/www/us/en/develop/articl
 
 # Unpacking
 
-Clone this project into `<pin-3.16-root>/source/tools/` (next to the other example Pintools).
+1. Download [Pin 3.16](https://software.intel.com/content/www/us/en/develop/articles/pin-a-binary-instrumentation-tool-downloads.html)([Link for Linux](http://software.intel.com/sites/landingpage/pintool/downloads/pin-3.16-98275-ge0db48c31-gcc-linux.tar.gz)) and unpack.
+2. Clone this project into `<pin-3.16-root>/source/tools/` (next to the other example Pintools).
 
 # Usage
 
