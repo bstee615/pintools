@@ -21,7 +21,7 @@ struct Location
 };
 
 /// The information we need at one level of the traversal.
-class WalkParams
+class ASTVisitor
 {
     unsigned int level;
     CXCursorKind seeking;
@@ -54,31 +54,52 @@ class WalkParams
         return result;
     }
 
-public:
-
     // Copy params from CXCursor and CXClientData during the traversal.
-    WalkParams(CXCursor cursor, CXClientData data) : WalkParams(*reinterpret_cast<WalkParams *>(data))
+    ASTVisitor(CXCursor cursor, CXClientData data) : ASTVisitor(*reinterpret_cast<ASTVisitor *>(data))
     {
         this->cursor = cursor;
     }
 
-    WalkParams(const WalkParams &currentParams) : level(currentParams.level),
+    ASTVisitor(const ASTVisitor &currentParams) : level(currentParams.level),
                                                   seeking(currentParams.seeking),
                                                   cursor(currentParams.cursor),
                                                   tags(std::move(currentParams.tags)) {}
 
-    WalkParams(CXCursorKind seeking, std::vector<Location> *tags) : level(0), seeking(seeking), tags(tags) {}
+    ASTVisitor(CXCursorKind seeking, std::vector<Location> *tags) : level(0), seeking(seeking), tags(tags) {}
+
+    static ASTVisitor next(const ASTVisitor &currentParams)
+    {
+        ASTVisitor next(currentParams);
+        next.level++;
+        return next;
+    }
+
+    static CXChildVisitResult visit(CXCursor cursor, CXCursor /* parent */, CXClientData clientData)
+    {
+        ASTVisitor currentParams(cursor, clientData);
+        if (!currentParams.isValidLocation())
+        {
+            return CXChildVisit_Continue;
+        }
+
+        // If this is the level we want, tag it and log
+        if (currentParams.cursorMatches())
+        {
+            currentParams.tag();
+        }
+        // currentParams.log();
+
+        // Create next call's params and recurse
+        ASTVisitor nextParams = ASTVisitor::next(currentParams);
+        clang_visitChildren(cursor,
+                            visit,
+                            &nextParams);
+        return CXChildVisit_Continue;
+    }
     
     void tag()
     {
         tags->push_back(Location(cursor));
-    }
-
-    static WalkParams next(const WalkParams &currentParams)
-    {
-        WalkParams next(currentParams);
-        next.level++;
-        return next;
     }
 
     // Exclude locations not in our main file.
@@ -106,46 +127,25 @@ public:
         std::cout << (cursorMatches() ? "* " : "");
         std::cout << "\n";
     }
+
+public:
+
+    static std::vector<Location> Traverse(CXCursor rootCursor, CXCursorKind seeking) {
+        std::vector<Location> tags;
+        ASTVisitor visitor(seeking, &tags);
+        visit(rootCursor, CXCursor(), (CXClientData)&visitor);
+        return tags;
+    }
+
+    static std::vector<Location> Traverse(CXCursor rootCursor, std::vector<CXCursorKind> seeking) {
+        std::vector<Location> allTags;
+        for (auto s : seeking) {
+            auto tags = Traverse(rootCursor, s);
+            allTags.insert(allTags.end(), tags.begin(), tags.end());
+        }
+        return allTags;
+    }
 };
-
-CXChildVisitResult visitor(CXCursor cursor, CXCursor /* parent */, CXClientData clientData)
-{
-    WalkParams currentParams(cursor, clientData);
-    if (!currentParams.isValidLocation())
-    {
-        return CXChildVisit_Continue;
-    }
-
-    // If this is the level we want, tag it and log
-    if (currentParams.cursorMatches())
-    {
-        currentParams.tag();
-    }
-    // currentParams.log();
-
-    // Create next call's params and recurse
-    WalkParams nextParams = WalkParams::next(currentParams);
-    clang_visitChildren(cursor,
-                        visitor,
-                        &nextParams);
-    return CXChildVisit_Continue;
-}
-
-std::vector<Location> traverse(CXCursor rootCursor, CXCursorKind seeking) {
-    std::vector<Location> tags;
-    WalkParams params(seeking, &tags);
-    visitor(rootCursor, CXCursor(), (CXClientData)&params);
-    return tags;
-}
-
-std::vector<Location> traverse(CXCursor rootCursor, std::vector<CXCursorKind> seeking) {
-    std::vector<Location> allTags;
-    for (auto s : seeking) {
-        auto tags = traverse(rootCursor, s);
-        allTags.insert(allTags.end(), tags.begin(), tags.end());
-    }
-    return allTags;
-}
 
 int main(int argc, char **argv)
 {
@@ -168,14 +168,14 @@ int main(int argc, char **argv)
     }
 
     CXCursor rootCursor = clang_getTranslationUnitCursor(tu);
-    auto varDecls = traverse(rootCursor, CXCursor_VarDecl);
+    auto varDecls = ASTVisitor::Traverse(rootCursor, CXCursor_VarDecl);
     std::cout << "Variable declaration:" << std::endl;
     for (auto l : varDecls)
     {
         std::cout << l.filename << ":" << l.lineno << std::endl;
     }
 
-    auto switchDecls = traverse(rootCursor, {CXCursor_CaseStmt, CXCursor_DefaultStmt});
+    auto switchDecls = ASTVisitor::Traverse(rootCursor, {CXCursor_CaseStmt, CXCursor_DefaultStmt});
     std::cout << "Switch cases:" << std::endl;
     for (auto l : switchDecls)
     {
