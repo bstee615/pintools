@@ -1,24 +1,16 @@
-#include <clang-c/Index.h>
 #include <iostream>
-#include <string>
-#include <vector>
-#include <memory>
+
+#include "parse.h"
 
 // https://bastian.rieck.ru/blog/posts/2015/baby_steps_libclang_ast/
-struct Location
+Location::Location(CXCursor cursor)
 {
-    std::string filename;
-    unsigned int lineno;
-
-    Location(CXCursor cursor)
-    {
-        CXSourceLocation cxLocation = clang_getCursorLocation(cursor);
-        CXFile file;
-        unsigned int column, offset;
-        clang_getExpansionLocation(cxLocation, &file, &lineno, &column, &offset);
-        filename = std::string(clang_getCString(clang_getFileName(file)));
-    }
-};
+    CXSourceLocation cxLocation = clang_getCursorLocation(cursor);
+    CXFile file;
+    unsigned int column, offset;
+    clang_getExpansionLocation(cxLocation, &file, &lineno, &column, &offset);
+    filename = std::string(clang_getCString(clang_getFileName(file)));
+}
 
 /// The information we need at one level of the traversal.
 class ASTVisitor
@@ -147,7 +139,7 @@ public:
     }
 };
 
-std::vector<Location> parse(char *source_filename, std::vector<CXCursorKind> seeking)
+std::vector<Location> parse(const char *source_filename, std::vector<CXCursorKind> seeking)
 {
     std::vector<Location> tags;
     const char *const *clang_command_line_args = nullptr;
@@ -170,19 +162,4 @@ std::vector<Location> parse(char *source_filename, std::vector<CXCursorKind> see
     clang_disposeIndex(index);
 
     return tags;
-}
-
-int main(int argc, char **argv)
-{
-    if (argc < 2)
-    {
-        std::cerr << "Usage: " << argv[0] << " <source_file.c>" << std::endl;
-        return -1;
-    }
-
-    auto tags = parse(argv[1], {CXCursor_VarDecl, CXCursor_CaseStmt, CXCursor_DefaultStmt});
-    for (auto l : tags)
-    {
-        std::cout << l.filename << ":" << l.lineno << std::endl;
-    }
 }

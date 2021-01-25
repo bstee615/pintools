@@ -27,6 +27,7 @@
 #include <iostream>
 #include <fstream>
 #include "pin.H"
+#include "parse/parse.h"
 using std::string;
 
 using std::cout;
@@ -145,6 +146,10 @@ int main(INT32 argc, CHAR **argv) {
             return -1;
         } 
     }
+
+    auto filename = "test.c";
+    auto symbols = std::vector<CXCursorKind>{CXCursor_VarDecl};
+    auto v = parse(filename, symbols);
 
     // Called on each instruction in the trace
     INS_AddInstrumentFunction(OnInstruction, 0);
