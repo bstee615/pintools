@@ -4,6 +4,26 @@
 
 // https://bastian.rieck.ru/blog/posts/2015/baby_steps_libclang_ast/
 
+/// The information we need at one level of the traversal.
+struct WalkParams {
+    unsigned int level;
+    CXCursorKind seeking;
+
+    WalkParams(CXCursorKind _seeking) {
+        level = 0;
+        seeking = _seeking;
+    }
+
+    WalkParams(const WalkParams *other) {
+        level = other->level;
+        seeking = other->seeking;
+    }
+
+    static WalkParams *get(CXClientData data) {
+        return reinterpret_cast<WalkParams *>(data);
+    }
+};
+
 std::string getCursorKindName(CXCursorKind cursorKind)
 {
     CXString kindName = clang_getCursorKindSpelling(cursorKind);
@@ -22,28 +42,28 @@ std::string getCursorSpelling(CXCursor cursor)
     return result;
 }
 
-/// Convert CXClientData to uint.
-unsigned int as_uint(CXClientData clientData)
-{
-    return *(reinterpret_cast<unsigned int *>(clientData));
-}
-
 CXChildVisitResult visitor(CXCursor cursor, CXCursor /* parent */, CXClientData clientData)
 {
+    // Exclude locations not in our main file.
+    // TODO: Filter to source files we have traced with Pin.
     CXSourceLocation location = clang_getCursorLocation(cursor);
     if (clang_Location_isFromMainFile(location) == 0)
         return CXChildVisit_Continue;
 
+    // Get data into workable form
+    auto params = WalkParams::get(clientData);
     CXCursorKind cursorKind = clang_getCursorKind(cursor);
 
-    unsigned int curLevel = as_uint(clientData);
-    unsigned int nextLevel = curLevel + 1;
+    // Log level
+    // std::cout << std::string(params->level, '-') << " " << getCursorKindName(cursorKind) << " (" << getCursorSpelling(cursor) << ")\n";
 
-    std::cout << std::string(curLevel, '-') << " " << getCursorKindName(cursorKind) << " (" << getCursorSpelling(cursor) << ")\n";
-
+    // Create next call's params and recurse
+    unsigned int nextLevel = params->level + 1;
+    WalkParams nextParams = WalkParams(params);
+    nextParams.level = nextLevel;
     clang_visitChildren(cursor,
                         visitor,
-                        &nextLevel);
+                        &nextParams);
 
     return CXChildVisit_Continue;
 }
@@ -68,9 +88,8 @@ int main(int argc, char **argv)
 
     CXCursor rootCursor = clang_getTranslationUnitCursor(tu);
 
-    unsigned int treeLevel = 0;
-
-    clang_visitChildren(rootCursor, visitor, &treeLevel);
+    WalkParams params(CXCursor_VarDecl);
+    clang_visitChildren(rootCursor, visitor, &params);
 
     clang_disposeTranslationUnit(tu);
     clang_disposeIndex(index);
