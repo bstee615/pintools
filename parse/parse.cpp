@@ -147,6 +147,31 @@ public:
     }
 };
 
+std::vector<Location> parse(char *source_filename, std::vector<CXCursorKind> seeking)
+{
+    std::vector<Location> tags;
+    const char *const *clang_command_line_args = nullptr;
+    struct CXUnsavedFile *unsaved_files = nullptr;
+
+    CXIndex index = clang_createIndex(0, 1);
+    CXTranslationUnit tu = clang_parseTranslationUnit(index, source_filename, clang_command_line_args, 0, unsaved_files, 0, 0);
+
+    if (!tu)
+    {
+        std::cerr << "Could not create translation unit from " << source_filename << std::endl;
+        return tags;
+    }
+
+    CXCursor rootCursor = clang_getTranslationUnitCursor(tu);
+    auto varDecls = ASTVisitor::Traverse(rootCursor, seeking);
+    tags.insert(tags.end(), varDecls.begin(), varDecls.end());
+
+    clang_disposeTranslationUnit(tu);
+    clang_disposeIndex(index);
+
+    return tags;
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 2)
@@ -155,34 +180,9 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    const char *const *clang_command_line_args = nullptr;
-    struct CXUnsavedFile *unsaved_files = nullptr;
-
-    CXIndex index = clang_createIndex(0, 1);
-    CXTranslationUnit tu = clang_parseTranslationUnit(index, argv[1], clang_command_line_args, 0, unsaved_files, 0, 0);
-
-    if (!tu)
-    {
-        std::cerr << "Could not create translation unit from " << argv[1] << std::endl;
-        return -1;
-    }
-
-    CXCursor rootCursor = clang_getTranslationUnitCursor(tu);
-    auto varDecls = ASTVisitor::Traverse(rootCursor, CXCursor_VarDecl);
-    std::cout << "Variable declaration:" << std::endl;
-    for (auto l : varDecls)
+    auto tags = parse(argv[1], {CXCursor_VarDecl, CXCursor_CaseStmt, CXCursor_DefaultStmt});
+    for (auto l : tags)
     {
         std::cout << l.filename << ":" << l.lineno << std::endl;
     }
-
-    auto switchDecls = ASTVisitor::Traverse(rootCursor, {CXCursor_CaseStmt, CXCursor_DefaultStmt});
-    std::cout << "Switch cases:" << std::endl;
-    for (auto l : switchDecls)
-    {
-        std::cout << l.filename << ":" << l.lineno << std::endl;
-    }
-
-    clang_disposeTranslationUnit(tu);
-    clang_disposeIndex(index);
-    return 0;
 }
