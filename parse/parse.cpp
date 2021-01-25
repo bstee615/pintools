@@ -109,34 +109,43 @@ public:
 };
 
 CXChildVisitResult visitor(CXCursor cursor, CXCursor /* parent */, CXClientData clientData)
+{
+    WalkParams currentParams(cursor, clientData);
+    if (!currentParams.isValidLocation())
     {
-        WalkParams currentParams(cursor, clientData);
-        if (!currentParams.isValidLocation())
-        {
-            return CXChildVisit_Continue;
-        }
-
-        // If this is the level we want, tag it and log
-        if (currentParams.cursorMatches())
-        {
-            currentParams.tag();
-        }
-        // currentParams.log();
-
-        // Create next call's params and recurse
-        WalkParams nextParams = WalkParams::next(currentParams);
-        clang_visitChildren(cursor,
-                            visitor,
-                            &nextParams);
         return CXChildVisit_Continue;
     }
+
+    // If this is the level we want, tag it and log
+    if (currentParams.cursorMatches())
+    {
+        currentParams.tag();
+    }
+    // currentParams.log();
+
+    // Create next call's params and recurse
+    WalkParams nextParams = WalkParams::next(currentParams);
+    clang_visitChildren(cursor,
+                        visitor,
+                        &nextParams);
+    return CXChildVisit_Continue;
+}
 
 std::vector<Location> traverse(CXCursor rootCursor, CXCursorKind seeking) {
     std::vector<Location> tags;
     WalkParams params(seeking, &tags);
     visitor(rootCursor, CXCursor(), (CXClientData)&params);
-        return tags;
+    return tags;
+}
+
+std::vector<Location> traverse(CXCursor rootCursor, std::vector<CXCursorKind> seeking) {
+    std::vector<Location> allTags;
+    for (auto s : seeking) {
+        auto tags = traverse(rootCursor, s);
+        allTags.insert(allTags.end(), tags.begin(), tags.end());
     }
+    return allTags;
+}
 
 int main(int argc, char **argv)
 {
@@ -166,9 +175,11 @@ int main(int argc, char **argv)
         std::cout << l.filename << ":" << l.lineno << std::endl;
     }
 
-    for (auto l : *tags)
+    auto switchDecls = traverse(rootCursor, {CXCursor_CaseStmt, CXCursor_DefaultStmt});
+    std::cout << "Switch cases:" << std::endl;
+    for (auto l : switchDecls)
     {
-        std::cout << l.filename << " " << l.lineno << std::endl;
+        std::cout << l.filename << ":" << l.lineno << std::endl;
     }
 
     clang_disposeTranslationUnit(tu);
