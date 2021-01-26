@@ -60,7 +60,7 @@ KNOB<BOOL> KnobReportColumns(KNOB_MODE_WRITEONCE,  "pintool",
 
 // Print out help message.
 INT32 Usage() {
-    cerr << "This tool demonstrates the usage of the PIN_GetSourceLocation API." << endl;
+    cerr << "This tool traces the execution of a command." << endl;
     cerr << endl << KNOB_BASE::StringKnobSummary() << endl;
 
     return -1;
