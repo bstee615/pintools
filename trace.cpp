@@ -50,6 +50,8 @@ ofstream outFile;
 
 KNOB<string> KnobOutputFile(KNOB_MODE_WRITEONCE,  "pintool",
     "o", "", "specify file name for the tool's output. If no filename is specified, the output will be directed to stdout.");
+KNOB<BOOL> KnobReportColumns(KNOB_MODE_WRITEONCE,  "pintool",
+    "c", "1", "report column numbers for each location.");
 
 
 /* ===================================================================== */
@@ -79,13 +81,13 @@ void write(std::string &str)
 // Printing the source location of an instruction.
 static void OutputSourceLocation(ADDRINT address, INS ins = INS_Invalid()) {
     string filename;    // This will hold the source file name.
-    INT32 line = 0;     // This will hold the line number within the file.
+    INT32 line;         // This will hold the line number within the file.
+    INT32 column;       // This will hold the column number within the file.
 
-    // In this example, we don't print the column number so there is no reason to obtain it.
-    // Simply pass a NULL pointer instead. Also, acquiring the client lock is not required in
+    // Acquiring the client lock is not required in
     // instrumentation functions, only in analysis functions.
     //
-    PIN_GetSourceLocation(address, NULL, &line, &filename);
+    PIN_GetSourceLocation(address, &column, &line, &filename);
 
     // Prepare the output strings.
     string asmOrFuncName;
@@ -99,7 +101,11 @@ static void OutputSourceLocation(ADDRINT address, INS ins = INS_Invalid()) {
     // Print lines only if source was found.
     if (!filename.empty()) {
         std::ostringstream ss;
-        ss << filename << ":" << line << endl;
+        ss << filename << ":" << line;
+        if (KnobReportColumns.Value()) {
+            ss << ":" << column;
+        }
+        ss << endl;
         auto location = ss.str();
 
         // Don't print duplicate lines.
