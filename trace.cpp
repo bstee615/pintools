@@ -51,7 +51,7 @@ ofstream outFile;
 KNOB<string> KnobOutputFile(KNOB_MODE_WRITEONCE,  "pintool",
     "o", "", "specify file name for the tool's output. If no filename is specified, the output will be directed to stdout.");
 KNOB<BOOL> KnobReportColumns(KNOB_MODE_WRITEONCE,  "pintool",
-    "c", "1", "report column numbers for each location.");
+    "c", "0", "report column numbers for each location.");
 
 
 /* ===================================================================== */
