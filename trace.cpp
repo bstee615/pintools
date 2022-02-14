@@ -71,10 +71,12 @@ void write(std::string &str)
     if (!KnobOutputFile.Value().empty())
     {
 		outFile << str;
+        outFile << std::flush;
     }
     else
     {
 		cout << str;
+        cout << std::flush;
     }
 }
 
@@ -99,21 +101,23 @@ static void OutputSourceLocation(ADDRINT address, INS ins = INS_Invalid()) {
     }
 
     // Print lines only if source was found.
-    if (!filename.empty()) {
+    // if (!filename.empty()) {
         std::ostringstream ss;
         ss << filename << ":" << line;
         if (KnobReportColumns.Value()) {
             ss << ":" << column;
         }
+        ss << " " << asmOrFuncName;
         ss << endl;
         auto location = ss.str();
+        write(location);
 
         // Don't print duplicate lines.
-        if (location != lastLocation) {
-            write(location);
-            lastLocation = location;
-        }
-    }
+        // if (location != lastLocation) {
+        //     write(location);
+        //     lastLocation = location;
+        // }
+    // }
 }
 
 // Called on every instruction in a trace.
