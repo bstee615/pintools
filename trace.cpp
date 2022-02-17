@@ -73,192 +73,34 @@ INT32 Usage() {
     return -1;
 }
 
-void write(std::string &str)
-{
-    if (!KnobOutputFile.Value().empty())
-    {
-		out << str << endl;
-    }
-    else
-    {
-		cout << str << endl;
-    }
-}
-
-// Printing the source location of an instruction.
-static void OutputSourceLocation(ADDRINT address, INS ins = INS_Invalid()) {
-    string filename;    // This will hold the source file name.
-    INT32 line;         // This will hold the line number within the file.
-    INT32 column;       // This will hold the column number within the file.
-
-    // Acquiring the client lock is not required in
-    // instrumentation functions, only in analysis functions.
-    //
-    PIN_GetSourceLocation(address, &column, &line, &filename);
-
-    // Prepare the output strings.
-    string asmOrFuncName;
-    if (INS_Valid(ins)) {
-        asmOrFuncName = INS_Disassemble(ins); // For an instruction, get the disassembly.
-    }
-    else {
-        asmOrFuncName = RTN_FindNameByAddress(address); // For a routine, get its name.
-    }
-
-    // Print lines only if source was found.
-    if (!filename.empty()) {
-        std::ostringstream ss;
-        ss << filename << ":" << line;
-        if (KnobReportColumns.Value()) {
-            ss << ":" << column;
-        }
-        ss << ":" << asmOrFuncName;
-        ss << endl;
-        auto location = ss.str();
-
-        // Don't print duplicate lines.
-        // if (location != lastLocation) {
-            write(location);
-        //     lastLocation = location;
-        // }
-    }
-}
-
-// Called on every instruction in a trace.
-VOID OnInstruction(INS ins, VOID *v)
-{
-    OutputSourceLocation(INS_Address(ins), ins); // Calls PIN_GetSourceLocation for a single instruction.
-}
-
 string FormatAddress(ADDRINT address, RTN rtn)
 {
-    string s;
-    // if (KnobLines)
-    // {
-        INT32 column;
-        INT32 line;
-        string file;
+    INT32 column;
+    INT32 line;
+    string file;
 
-        PIN_GetSourceLocation(address, &column, &line, &file);
+    PIN_GetSourceLocation(address, &column, &line, &file);
 
-        if (file != "")
-        {
-            s += file + ":" + decstr(line) + ":" + decstr(column);
-        }
-    // }
-    return s;
-}
-
-
-
-// LOCALFUN VOID Flush()
-// {
-//     out << std::flush;
-// }
-
-// LOCALFUN BOOL Emit(THREADID threadid)
-// {
-//     return true;
-// }
-
-
-/* ===================================================================== */
-
-VOID EmitNoValues(THREADID threadid, string * str)
-{
-    // if (!Emit(threadid))
-    //     return;
-
-    out
-        << *str
-        << endl;
-
-    //Flush();
-}
-
-VOID Emit1Values(THREADID threadid, string * str, string * reg1str, ADDRINT reg1val)
-{
-    // if (!Emit(threadid))
-    //     return;
-
-    out
-        << *str //<< " | "
-        // << *reg1str << " = " << reg1val
-        << endl;
-
-    //Flush();
-}
-
-VOID Emit2Values(THREADID threadid, string * str, string * reg1str, ADDRINT reg1val, string * reg2str, ADDRINT reg2val)
-{
-    // if (!Emit(threadid))
-    //     return;
-
-    out
-        << *str //<< " | "
-        // << *reg1str << " = " << reg1val
-        // << ", " << *reg2str << " = " << reg2val
-        << endl;
-
-    //Flush();
-}
-
-VOID Emit3Values(THREADID threadid, string * str, string * reg1str, ADDRINT reg1val, string * reg2str, ADDRINT reg2val, string * reg3str, ADDRINT reg3val)
-{
-    // if (!Emit(threadid))
-    //     return;
-
-    out
-        << *str //<< " | "
-        // << *reg1str << " = " << reg1val
-        // << ", " << *reg2str << " = " << reg2val
-        // << ", " << *reg3str << " = " << reg3val
-        << endl;
-
-    //Flush();
-}
-
-
-VOID Emit4Values(THREADID threadid, string * str, string * reg1str, ADDRINT reg1val, string * reg2str, ADDRINT reg2val, string * reg3str, ADDRINT reg3val, string * reg4str, ADDRINT reg4val)
-{
-    // if (!Emit(threadid))
-    //     return;
-
-    out
-        << *str //<< " | "
-        // << *reg1str << " = " << reg1val
-        // << ", " << *reg2str << " = " << reg2val
-        // << ", " << *reg3str << " = " << reg3val
-        // << ", " << *reg4str << " = " << reg4val
-        << endl;
-
-    //Flush();
-}
-
-
-const UINT32 MaxEmitArgs = 4;
-
-AFUNPTR emitFuns[] =
-{
-    AFUNPTR(EmitNoValues), AFUNPTR(Emit1Values), AFUNPTR(Emit2Values), AFUNPTR(Emit3Values), AFUNPTR(Emit4Values)
-};
-
-VOID AddEmit(INS ins, IPOINT point, string & traceString, UINT32 regCount, REG regs[])
-{
-    if (regCount > MaxEmitArgs)
-        regCount = MaxEmitArgs;
-
-    IARGLIST args = IARGLIST_Alloc();
-    for (UINT32 i = 0; i < regCount; i++)
+    if (file != "")
     {
-        IARGLIST_AddArguments(args, IARG_PTR, new string(REG_StringShort(regs[i])), IARG_REG_VALUE, regs[i], IARG_END);
+        file += ":" + decstr(line) + ":" + decstr(column);
     }
+    return file;
+}
 
-    INS_InsertCall(ins, point, emitFuns[regCount], IARG_THREAD_ID,
-                   IARG_PTR, new string(traceString),
-                   IARG_IARGLIST, args,
-                   IARG_END);
-    IARGLIST_Free(args);
+
+VOID Emit(string * str)
+{
+    out << *str << endl;
+}
+
+
+AFUNPTR emitFn = AFUNPTR(Emit);
+
+
+VOID AddEmit(INS ins, IPOINT point, string &traceString)
+{
+    INS_InsertCall(ins, point, emitFn, IARG_PTR, new string(traceString), IARG_END);
 }
 
 
@@ -268,53 +110,18 @@ VOID InstructionTrace(TRACE trace, INS ins)
     ASSERTX(addr);
 
     // Format the string at instrumentation time
-    string traceString;
-    string astring = FormatAddress(INS_Address(ins), TRACE_Rtn(trace));
-
-    if (astring.empty())
+    string addressString = FormatAddress(INS_Address(ins), TRACE_Rtn(trace));
+    if (addressString.empty())
         return;
-    traceString += astring;
-
-    INT32 regCount = 0;
-    REG regs[20];
-    // REG xmm_dst = REG_INVALID();
-
-    for (UINT32 i = 0; i < INS_MaxNumWRegs(ins); i++)
-    {
-        REG x = REG_FullRegName(INS_RegW(ins, i));
-
-        if (REG_is_gr(x)
-#if defined(TARGET_IA32)
-            || x == REG_EFLAGS
-#elif defined(TARGET_IA32E)
-            || x == REG_RFLAGS
-#endif
-        )
-        {
-            regs[regCount] = x;
-            regCount++;
-        }
-
-        // if (REG_is_xmm(x))
-        //     xmm_dst = x;
-    }
 
     if (INS_IsValidForIpointAfter(ins))
     {
-        AddEmit(ins, IPOINT_AFTER, traceString, regCount, regs);
+        AddEmit(ins, IPOINT_AFTER, addressString);
     }
     if (INS_IsValidForIpointTakenBranch(ins))
     {
-        AddEmit(ins, IPOINT_TAKEN_BRANCH, traceString, regCount, regs);
+        AddEmit(ins, IPOINT_TAKEN_BRANCH, addressString);
     }
-
-    // if (xmm_dst != REG_INVALID())
-    // {
-    //     if (INS_IsValidForIpointAfter(ins))
-    //         AddXMMEmit(ins, IPOINT_AFTER, xmm_dst);
-    //     if (INS_IsValidForIpointTakenBranch(ins))
-    //         AddXMMEmit(ins, IPOINT_TAKEN_BRANCH, xmm_dst);
-    // }
 }
 
 VOID Trace(TRACE trace, VOID* v)
