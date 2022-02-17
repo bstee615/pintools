@@ -24,6 +24,11 @@
  *
  */
 
+#include <vector>
+#include <iostream>
+#include <iomanip>
+#include <fstream>
+#include <unistd.h>
 #include <iostream>
 #include <fstream>
 #include "pin.H"
@@ -35,13 +40,15 @@ using std::endl;
 using std::ostream;
 using std::ofstream;
 
+// using namespace CONTROLLER;
+// using namespace INSTLIB;
 
 /* ================================================================== */
 // Global variables 
 /* ================================================================== */
 
 string lastLocation;
-ofstream outFile;
+ofstream out;
 
 
 /* ===================================================================== */
@@ -70,11 +77,11 @@ void write(std::string &str)
 {
     if (!KnobOutputFile.Value().empty())
     {
-		outFile << str;
+		out << str << endl;
     }
     else
     {
-		cout << str;
+		cout << str << endl;
     }
 }
 
@@ -105,14 +112,15 @@ static void OutputSourceLocation(ADDRINT address, INS ins = INS_Invalid()) {
         if (KnobReportColumns.Value()) {
             ss << ":" << column;
         }
+        ss << ":" << asmOrFuncName;
         ss << endl;
         auto location = ss.str();
 
         // Don't print duplicate lines.
-        if (location != lastLocation) {
+        // if (location != lastLocation) {
             write(location);
-            lastLocation = location;
-        }
+        //     lastLocation = location;
+        // }
     }
 }
 
@@ -122,12 +130,224 @@ VOID OnInstruction(INS ins, VOID *v)
     OutputSourceLocation(INS_Address(ins), ins); // Calls PIN_GetSourceLocation for a single instruction.
 }
 
+string FormatAddress(ADDRINT address, RTN rtn)
+{
+    string s;
+    // if (KnobLines)
+    // {
+        INT32 column;
+        INT32 line;
+        string file;
+
+        PIN_GetSourceLocation(address, &column, &line, &file);
+
+        if (file != "")
+        {
+            s += file + ":" + decstr(line) + ":" + decstr(column);
+        }
+    // }
+    return s;
+}
+
+
+
+// LOCALFUN VOID Flush()
+// {
+//     out << std::flush;
+// }
+
+// LOCALFUN BOOL Emit(THREADID threadid)
+// {
+//     return true;
+// }
+
+
+/* ===================================================================== */
+
+VOID EmitNoValues(THREADID threadid, string * str)
+{
+    // if (!Emit(threadid))
+    //     return;
+
+    out
+        << *str
+        << endl;
+
+    //Flush();
+}
+
+VOID Emit1Values(THREADID threadid, string * str, string * reg1str, ADDRINT reg1val)
+{
+    // if (!Emit(threadid))
+    //     return;
+
+    out
+        << *str //<< " | "
+        // << *reg1str << " = " << reg1val
+        << endl;
+
+    //Flush();
+}
+
+VOID Emit2Values(THREADID threadid, string * str, string * reg1str, ADDRINT reg1val, string * reg2str, ADDRINT reg2val)
+{
+    // if (!Emit(threadid))
+    //     return;
+
+    out
+        << *str //<< " | "
+        // << *reg1str << " = " << reg1val
+        // << ", " << *reg2str << " = " << reg2val
+        << endl;
+
+    //Flush();
+}
+
+VOID Emit3Values(THREADID threadid, string * str, string * reg1str, ADDRINT reg1val, string * reg2str, ADDRINT reg2val, string * reg3str, ADDRINT reg3val)
+{
+    // if (!Emit(threadid))
+    //     return;
+
+    out
+        << *str //<< " | "
+        // << *reg1str << " = " << reg1val
+        // << ", " << *reg2str << " = " << reg2val
+        // << ", " << *reg3str << " = " << reg3val
+        << endl;
+
+    //Flush();
+}
+
+
+VOID Emit4Values(THREADID threadid, string * str, string * reg1str, ADDRINT reg1val, string * reg2str, ADDRINT reg2val, string * reg3str, ADDRINT reg3val, string * reg4str, ADDRINT reg4val)
+{
+    // if (!Emit(threadid))
+    //     return;
+
+    out
+        << *str //<< " | "
+        // << *reg1str << " = " << reg1val
+        // << ", " << *reg2str << " = " << reg2val
+        // << ", " << *reg3str << " = " << reg3val
+        // << ", " << *reg4str << " = " << reg4val
+        << endl;
+
+    //Flush();
+}
+
+
+const UINT32 MaxEmitArgs = 4;
+
+AFUNPTR emitFuns[] =
+{
+    AFUNPTR(EmitNoValues), AFUNPTR(Emit1Values), AFUNPTR(Emit2Values), AFUNPTR(Emit3Values), AFUNPTR(Emit4Values)
+};
+
+VOID AddEmit(INS ins, IPOINT point, string & traceString, UINT32 regCount, REG regs[])
+{
+    if (regCount > MaxEmitArgs)
+        regCount = MaxEmitArgs;
+
+    IARGLIST args = IARGLIST_Alloc();
+    for (UINT32 i = 0; i < regCount; i++)
+    {
+        IARGLIST_AddArguments(args, IARG_PTR, new string(REG_StringShort(regs[i])), IARG_REG_VALUE, regs[i], IARG_END);
+    }
+
+    INS_InsertCall(ins, point, emitFuns[regCount], IARG_THREAD_ID,
+                   IARG_PTR, new string(traceString),
+                   IARG_IARGLIST, args,
+                   IARG_END);
+    IARGLIST_Free(args);
+}
+
+
+VOID InstructionTrace(TRACE trace, INS ins)
+{
+    ADDRINT addr = INS_Address(ins);
+    ASSERTX(addr);
+
+    // Format the string at instrumentation time
+    string traceString;
+    string astring = FormatAddress(INS_Address(ins), TRACE_Rtn(trace));
+
+    if (astring.empty())
+        return;
+    traceString += astring;
+
+    INT32 regCount = 0;
+    REG regs[20];
+    // REG xmm_dst = REG_INVALID();
+
+    for (UINT32 i = 0; i < INS_MaxNumWRegs(ins); i++)
+    {
+        REG x = REG_FullRegName(INS_RegW(ins, i));
+
+        if (REG_is_gr(x)
+#if defined(TARGET_IA32)
+            || x == REG_EFLAGS
+#elif defined(TARGET_IA32E)
+            || x == REG_RFLAGS
+#endif
+        )
+        {
+            regs[regCount] = x;
+            regCount++;
+        }
+
+        // if (REG_is_xmm(x))
+        //     xmm_dst = x;
+    }
+
+    if (INS_IsValidForIpointAfter(ins))
+    {
+        AddEmit(ins, IPOINT_AFTER, traceString, regCount, regs);
+    }
+    if (INS_IsValidForIpointTakenBranch(ins))
+    {
+        AddEmit(ins, IPOINT_TAKEN_BRANCH, traceString, regCount, regs);
+    }
+
+    // if (xmm_dst != REG_INVALID())
+    // {
+    //     if (INS_IsValidForIpointAfter(ins))
+    //         AddXMMEmit(ins, IPOINT_AFTER, xmm_dst);
+    //     if (INS_IsValidForIpointTakenBranch(ins))
+    //         AddXMMEmit(ins, IPOINT_TAKEN_BRANCH, xmm_dst);
+    // }
+}
+
+VOID Trace(TRACE trace, VOID* v)
+{
+    // Check that the instruction is in the executable.
+    // This excludes a lot of library and preamble/postamble code.
+    RTN rtn = TRACE_Rtn(trace);
+    if (RTN_Valid(rtn) && !IMG_IsMainExecutable(SEC_Img(RTN_Sec(rtn))))
+    {
+        return;
+    }
+
+    for (BBL bbl = TRACE_BblHead(trace); BBL_Valid(bbl); bbl = BBL_Next(bbl))
+    {
+        for (INS ins = BBL_InsHead(bbl); INS_Valid(ins); ins = INS_Next(ins))
+        {
+            // OnInstruction(ins, 0);
+            InstructionTrace(trace, ins);
+
+            // CallTrace(trace, ins);
+
+            // MemoryTrace(ins);
+        }
+    }
+}
+
+
 // Adding fini function just to close the output file
 VOID Fini(INT32 code, VOID *v)
 {
     if (!KnobOutputFile.Value().empty())
     {
-        outFile.close();
+        out.close();
     }
 }
 
@@ -144,8 +364,8 @@ int main(INT32 argc, CHAR **argv) {
 
     if (!KnobOutputFile.Value().empty())
     {
-		outFile.open(KnobOutputFile.Value().c_str(), std::ofstream::out);
-        if(!outFile)
+		out.open(KnobOutputFile.Value().c_str(), std::ofstream::out);
+        if(!out)
         {
             cerr << "File could not be opened: \"" << KnobOutputFile.Value() << "\"" << endl;
             return -1;
@@ -153,7 +373,8 @@ int main(INT32 argc, CHAR **argv) {
     }
 
     // Called on each instruction in the trace
-    INS_AddInstrumentFunction(OnInstruction, 0);
+    // INS_AddInstrumentFunction(OnInstruction, 0);
+    TRACE_AddInstrumentFunction(Trace, 0);
 
     // Register function to be called when the application exits
     PIN_AddFiniFunction(Fini, 0);
