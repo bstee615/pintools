@@ -59,6 +59,8 @@ KNOB<string> KnobOutputFile(KNOB_MODE_WRITEONCE,  "pintool",
     "o", "", "specify file name for the tool's output. If no filename is specified, the output will be directed to stdout.");
 KNOB<BOOL> KnobReportColumns(KNOB_MODE_WRITEONCE,  "pintool",
     "c", "0", "report column numbers for each location.");
+KNOB<BOOL> KnobReportMainOnly(KNOB_MODE_WRITEONCE,  "pintool",
+    "m", "0", "report lines from main executable only.");
 
 
 /* ===================================================================== */
@@ -83,7 +85,10 @@ string FormatAddress(ADDRINT address, RTN rtn)
 
     if (file != "")
     {
-        file += ":" + decstr(line) + ":" + decstr(column);
+        file += ":" + decstr(line);
+        if (KnobReportColumns.Value()) {
+            file += ":" + decstr(column);
+        }
     }
     return file;
 }
@@ -129,7 +134,11 @@ VOID Trace(TRACE trace, VOID* v)
     // Check that the instruction is in the executable.
     // This excludes a lot of library and preamble/postamble code.
     RTN rtn = TRACE_Rtn(trace);
-    if (RTN_Valid(rtn) && !IMG_IsMainExecutable(SEC_Img(RTN_Sec(rtn))))
+    if (!RTN_Valid(rtn))
+    {
+        return;
+    }
+    else if (KnobReportMainOnly.Value() && !IMG_IsMainExecutable(SEC_Img(RTN_Sec(rtn))))
     {
         return;
     }
